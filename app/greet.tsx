@@ -14,11 +14,12 @@ export default function Greet() {
   return (
     <div>
       <button
+        className="btn btn-neutral"
         onClick={() => {
           invoke("create_volume");
         }}
       >
-        创建空白映像
+        创建加密映像
       </button>
     </div>
   );

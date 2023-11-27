@@ -12,7 +12,7 @@ export default function Greet() {
 
   // Necessary because we will have to use Greet as a component later.
   return (
-    <div>
+    <div className="flex gap-4">
       <button
         className="btn btn-neutral"
         onClick={() => {
@@ -20,6 +20,12 @@ export default function Greet() {
         }}
       >
         创建加密映像
+      </button>
+      <button
+        className="btn btn-secondary"
+        onClick={() => invoke("load_volume")}
+      >
+        挂载加密映像
       </button>
     </div>
   );

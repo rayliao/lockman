@@ -3,8 +3,9 @@
 mod config;
 mod pwd;
 mod utils;
-use pwd::PASSWORD_MANAGER_INSTANCE;
 use config::PRE_PWD;
+use pwd::PASSWORD_MANAGER_INSTANCE;
+use std::fs;
 use std::io::Write;
 use std::process::{Command, Stdio};
 use utils::check_file;
@@ -17,7 +18,12 @@ fn init() {
 fn main() {
     init();
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![greet, create_volume, load_volume])
+        .invoke_handler(tauri::generate_handler![
+            greet,
+            create_volume,
+            list_volume,
+            load_volume
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
@@ -27,7 +33,7 @@ fn greet(name: &str) -> String {
     format!("Hello, {}!", name)
 }
 
-fn hande_pwd(pwd: &str) -> String {
+fn hande_pwd(pwd: String) -> String {
     return format!(
         "{}{}{}",
         PRE_PWD,
@@ -36,19 +42,34 @@ fn hande_pwd(pwd: &str) -> String {
     );
 }
 
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+struct CreateObject {
+    name: String,
+    password: String,
+    size: String,
+}
+
+#[derive(serde::Serialize)]
+struct ResultObject {
+    msg: String,
+    code: u32,
+}
+
 /**
  * 创建加密映像
  */
 #[tauri::command]
-fn create_volume() {
-    let image_name = "example";
+fn create_volume(obj: CreateObject) -> ResultObject {
+    let image_name = obj.name;
     let file_name = format!("{}.dmg", image_name);
-    // let image_size = 1024;
-    let savepath = utils::get_savepath();
-    let password = "123456";
+    let savepath = utils::get_directory();
+    let password = obj.password;
     let file_exist = check_file(file_name);
     if file_exist {
-        println!("文件名已经存在");
+        ResultObject {
+            msg: "文件名已经存在".to_string(),
+            code: 0,
+        }
     } else {
         let dmg_file_path = format!("{}{}.dmg", savepath, image_name);
         let mut child = Command::new("hdiutil")
@@ -56,8 +77,7 @@ fn create_volume() {
             .arg("-encryption")
             .arg("-stdinpass")
             .arg("-size")
-            .arg("9m")
-            // .arg(format!("{}", image_size))
+            .arg(obj.size)
             .arg("-volname")
             .arg(image_name)
             .arg(&dmg_file_path)
@@ -68,11 +88,38 @@ fn create_volume() {
         writeln!(stdin, "{}", hande_pwd(password)).expect("Failed to write password");
         let output = child.wait().expect("Failed to wait for command excutetion");
         if output.success() {
-            println!("Command executed successfully");
+            ResultObject {
+                msg: "创建成功".to_string(),
+                code: 1,
+            }
         } else {
-            println!("Command failed with exit code:{:?}", output.code());
+            ResultObject {
+                msg: "创建失败".to_string(),
+                code: 0,
+            }
         }
     }
+}
+
+#[tauri::command]
+fn list_volume() -> Vec<String> {
+    let directory = utils::get_directory();
+    let mut file_names: Vec<String> = Vec::new();
+    if let Ok(entries) = fs::read_dir(directory) {
+        for entry in entries {
+            if let Ok(entry) = entry {
+                let file_path = entry.path();
+                if file_path.is_file() && file_path.extension() == Some("dmg".as_ref()) {
+                    if let Some(file_name) = file_path.file_name() {
+                        if let Some(name) = file_name.to_str() {
+                            file_names.push(name.to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    file_names
 }
 
 /**
@@ -87,7 +134,7 @@ fn load_volume() {
     let file_name = format!("{}.dmg", image_name);
     let file_exist = check_file(file_name);
     if file_exist {
-        let savepath = utils::get_savepath();
+        let savepath = utils::get_directory();
         let dmg_file_path = format!("{}{}.dmg", savepath, image_name);
         let mut child = Command::new("hdiutil")
             .arg("attach")
@@ -101,7 +148,7 @@ fn load_volume() {
         // writeln!(stdin, "{}", hande_pwd(password)).expect("Failed to write password");
         if let Some(ref mut stdin) = child.stdin {
             stdin
-                .write_all(hande_pwd(password).as_bytes())
+                .write_all(hande_pwd(password.to_string()).as_bytes())
                 .expect("Failed to write to stdin");
             // writeln!(stdin, "{}", hande_pwd(password)).expect("");
         }
